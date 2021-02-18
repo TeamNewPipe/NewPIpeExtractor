@@ -924,35 +924,38 @@ public class YoutubeStreamExtractor extends StreamExtractor {
         for (int i = 0; i != formats.size(); ++i) {
             JsonObject formatData = formats.getObject(i);
             int itag = formatData.getInt("itag");
+            int averageBitrate = formatData.getInt("averageBitrate");
+            int fps = formatData.getInt("fps");
+            String qualityLabel = formatData.getString("qualityLabel");
+            String mimeType = formatData.getString("mimeType");
 
-            if (ItagItem.isSupported(itag)) {
-                try {
-                    ItagItem itagItem = ItagItem.getItag(itag);
-                    if (itagItem.itagType == itagTypeWanted) {
-                        // Ignore streams that are delivered using YouTube's OTF format,
-                        // as those only work with DASH and not with progressive HTTP.
-                        if (formatData.getString("type", EMPTY_STRING)
-                                .equalsIgnoreCase("FORMAT_STREAM_TYPE_OTF")) {
-                            continue;
-                        }
 
-                        String streamUrl;
-                        if (formatData.has("url")) {
-                            streamUrl = formatData.getString("url");
-                        } else {
-                            // this url has an obfuscated signature
-                            final String cipherString = formatData.has("cipher")
-                                    ? formatData.getString("cipher")
-                                    : formatData.getString("signatureCipher");
-                            final Map<String, String> cipher = Parser.compatParseMap(cipherString);
-                            streamUrl = cipher.get("url") + "&" + cipher.get("sp") + "="
-                                    + deobfuscateSignature(cipher.get("s"));
-                        }
-
-                        urlAndItags.put(streamUrl, itagItem);
+            try {
+                ItagItem itagItem = ItagItem.getItag(itag, averageBitrate, fps, qualityLabel, mimeType);
+                if (itagItem.itagType == itagTypeWanted) {
+                    // Ignore streams that are delivered using YouTube's OTF format,
+                    // as those only work with DASH and not with progressive HTTP.
+                    if (formatData.getString("type", EMPTY_STRING)
+                            .equalsIgnoreCase("FORMAT_STREAM_TYPE_OTF")) {
+                        continue;
                     }
-                } catch (UnsupportedEncodingException ignored) {
+
+                    String streamUrl;
+                    if (formatData.has("url")) {
+                        streamUrl = formatData.getString("url");
+                    } else {
+                        // this url has an obfuscated signature
+                        final String cipherString = formatData.has("cipher")
+                                ? formatData.getString("cipher")
+                                : formatData.getString("signatureCipher");
+                        final Map<String, String> cipher = Parser.compatParseMap(cipherString);
+                        streamUrl = cipher.get("url") + "&" + cipher.get("sp") + "="
+                                + deobfuscateSignature(cipher.get("s"));
+                    }
+
+                    urlAndItags.put(streamUrl, itagItem);
                 }
+            } catch (UnsupportedEncodingException ignored) {
             }
         }
 

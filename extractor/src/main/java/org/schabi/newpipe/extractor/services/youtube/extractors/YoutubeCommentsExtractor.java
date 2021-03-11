@@ -3,11 +3,12 @@ package org.schabi.newpipe.extractor.services.youtube.extractors;
 import com.grack.nanojson.JsonArray;
 import com.grack.nanojson.JsonObject;
 import com.grack.nanojson.JsonParser;
+
 import org.schabi.newpipe.extractor.Page;
 import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.comments.CommentReplyExtractor;
 import org.schabi.newpipe.extractor.comments.CommentsExtractor;
 import org.schabi.newpipe.extractor.comments.CommentsInfoItem;
-import org.schabi.newpipe.extractor.comments.CommentsInfoItemExtractor;
 import org.schabi.newpipe.extractor.comments.CommentsInfoItemsCollector;
 import org.schabi.newpipe.extractor.downloader.Downloader;
 import org.schabi.newpipe.extractor.downloader.Response;
@@ -18,18 +19,19 @@ import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper;
 import org.schabi.newpipe.extractor.utils.JsonUtils;
 import org.schabi.newpipe.extractor.utils.Parser;
+import org.schabi.newpipe.extractor.utils.Utils;
 
-import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.net.URLEncoder;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import javax.annotation.Nonnull;
+
 import static java.util.Collections.singletonList;
-import static org.schabi.newpipe.extractor.utils.Utils.UTF_8;
 import static org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty;
 
 public class YoutubeCommentsExtractor extends CommentsExtractor {
@@ -80,7 +82,7 @@ public class YoutubeCommentsExtractor extends CommentsExtractor {
         params.put("pbj", "1");
         params.put("ctoken", continuation);
         try {
-            return new Page("https://m.youtube.com/watch_comment?" + getDataString(params));
+            return new Page("https://m.youtube.com/watch_comment?" + YoutubeParsingHelper.getDataString(params));
         } catch (UnsupportedEncodingException e) {
             throw new ParsingException("Could not get next page url", e);
         }
@@ -112,18 +114,39 @@ public class YoutubeCommentsExtractor extends CommentsExtractor {
             //no comments
             return;
         }
-        List<Object> comments;
-        try {
-            comments = JsonUtils.getValues(contents, "commentThreadRenderer.comment.commentRenderer");
-        } catch (Exception e) {
-            throw new ParsingException("unable to get parse youtube comments", e);
-        }
 
-        for (Object c : comments) {
-            if (c instanceof JsonObject) {
-                CommentsInfoItemExtractor extractor = new YoutubeCommentsInfoItemExtractor((JsonObject) c, getUrl(), getTimeAgoParser());
-                collector.commit(extractor);
+        for (Object c : contents) {
+            JsonObject commentTR;
+            JsonObject comment;
+            try {
+                commentTR = JsonUtils.getObject((JsonObject) c, "commentThreadRenderer");
+                comment = (JsonObject) JsonUtils.getValue(commentTR, "comment.commentRenderer");
+            } catch (Exception e) {
+                throw new ParsingException("unable to get parse youtube comment", e);
             }
+            CommentReplyExtractor replyExtractor;
+
+            if ((commentTR).has("replies")) {
+                try {
+                    JsonArray replyContinuations = JsonUtils.getArray(commentTR, "replies.commentRepliesRenderer.continuations");
+                    String replyContinuation = JsonUtils.getString(replyContinuations.getObject(0), "nextContinuationData.continuation");
+                    String replyUrl = YoutubeParsingHelper.getRepliesUrl(replyContinuation);
+                    ListLinkHandler replyHandler = new ListLinkHandler(replyUrl, replyUrl, replyContinuation, Collections.EMPTY_LIST, "");
+                    YoutubeCommentReplyExtractor ytReply = new YoutubeCommentReplyExtractor(getService(), replyHandler);
+                    ytReply.setRequestHeaders(getRequestHeaders());
+                    replyExtractor = ytReply;
+                } catch (Exception e) {
+                    throw new ParsingException("unable to get parse youtube reply", e);
+                }
+            } else {
+                //No Replies
+                replyExtractor = null;
+            }
+
+            YoutubeCommentsInfoItemExtractor extractor = new YoutubeCommentsInfoItemExtractor(comment, getUrl(), getTimeAgoParser());
+            extractor.setReplyExtractor(replyExtractor);
+            extractor.setReplyState(false);
+            collector.commit(extractor);
         }
     }
 
@@ -137,29 +160,18 @@ public class YoutubeCommentsExtractor extends CommentsExtractor {
         ytClientName = Parser.matchGroup1(YT_CLIENT_NAME_PATTERN, responseBody);
     }
 
-
-    private String makeAjaxRequest(String siteUrl) throws IOException, ReCaptchaException {
+    private  Map<String, List<String>> getRequestHeaders() {
         Map<String, List<String>> requestHeaders = new HashMap<>();
         requestHeaders.put("Accept", singletonList("*/*"));
         requestHeaders.put("User-Agent", singletonList(USER_AGENT));
         requestHeaders.put("X-YouTube-Client-Version", singletonList(ytClientVersion));
         requestHeaders.put("X-YouTube-Client-Name", singletonList(ytClientName));
-        return getDownloader().get(siteUrl, requestHeaders, getExtractorLocalization()).responseBody();
+        return requestHeaders;
     }
 
-    private String getDataString(Map<String, String> params) throws UnsupportedEncodingException {
-        StringBuilder result = new StringBuilder();
-        boolean first = true;
-        for (Map.Entry<String, String> entry : params.entrySet()) {
-            if (first)
-                first = false;
-            else
-                result.append("&");
-            result.append(URLEncoder.encode(entry.getKey(), UTF_8));
-            result.append("=");
-            result.append(URLEncoder.encode(entry.getValue(), UTF_8));
-        }
-        return result.toString();
+    private String makeAjaxRequest(String siteUrl) throws IOException, ReCaptchaException {
+        return getDownloader().get(siteUrl,
+                getRequestHeaders(), getExtractorLocalization()).responseBody();
     }
 
     private String findValue(final String doc, final String start, final String end) {

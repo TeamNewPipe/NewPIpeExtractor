@@ -22,6 +22,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -37,7 +38,6 @@ import static org.schabi.newpipe.extractor.utils.Utils.HTTP;
 import static org.schabi.newpipe.extractor.utils.Utils.HTTPS;
 import static org.schabi.newpipe.extractor.utils.Utils.UTF_8;
 import static org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty;
-import static org.schabi.newpipe.extractor.utils.Utils.join;
 
 /*
  * Created by Christian Schabesberger on 02.03.16.
@@ -928,4 +928,30 @@ public class YoutubeParsingHelper {
                 .replaceAll("\\\\x5d", "]");
     }
 
+    public static String getRepliesUrl(String continuation) throws ParsingException {
+        Map<String, String> params = new HashMap<>();
+        params.put("action_get_comment_replies", "1");
+        params.put("ctoken", continuation);
+        params.put("pbj", "1");
+        try {
+            return "https://m.youtube.com/watch_comment?" + getDataString(params);
+        } catch (UnsupportedEncodingException e) {
+            throw new ParsingException("Could not get replies page0 url", e);
+        }
+    }
+
+    public static String getDataString(Map<String, String> params) throws UnsupportedEncodingException {
+        StringBuilder result = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<String, String> entry : params.entrySet()) {
+            if (first)
+                first = false;
+            else
+                result.append("&");
+            result.append(URLEncoder.encode(entry.getKey(), UTF_8));
+            result.append("=");
+            result.append(URLEncoder.encode(entry.getValue(), UTF_8));
+        }
+        return result.toString();
+    }
 }

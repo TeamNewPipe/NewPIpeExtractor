@@ -13,7 +13,7 @@ import java.io.IOException;
 
 public class CommentsInfo extends ListInfo<CommentsInfoItem> {
 
-    private CommentsInfo(int serviceId, ListLinkHandler listUrlIdHandler, String name) {
+    public CommentsInfo(int serviceId, ListLinkHandler listUrlIdHandler, String name) {
         super(serviceId, listUrlIdHandler, name);
     }
 

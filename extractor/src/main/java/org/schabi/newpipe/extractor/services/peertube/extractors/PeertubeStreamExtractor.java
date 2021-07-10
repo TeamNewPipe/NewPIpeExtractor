@@ -32,8 +32,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
-import static org.schabi.newpipe.extractor.utils.Utils.UTF_8;
-import static org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty;
+import static org.schabi.newpipe.extractor.utils.Utils.*;
 
 public class PeertubeStreamExtractor extends StreamExtractor {
     private final String baseUrl;
@@ -199,7 +198,7 @@ public class PeertubeStreamExtractor extends StreamExtractor {
     @Nonnull
     @Override
     public String getHlsUrl() {
-        return "";
+        return json.getObject("files").getString("playlistUrl", EMPTY_STRING);
     }
 
     @Override
@@ -246,13 +245,14 @@ public class PeertubeStreamExtractor extends StreamExtractor {
                 final String resolution = JsonUtils.getString(stream, "resolution.label");
                 final String extension = url.substring(url.lastIndexOf(".") + 1);
                 final MediaFormat format = MediaFormat.getFromSuffix(extension);
-                final VideoStream videoStream = new VideoStream(url, torrentUrl, format, resolution);
-                if (!Stream.containSimilarStream(videoStream, videoStreams)) {
-                    videoStreams.add(videoStream);
-                }
+                final String id = resolution + "." + extension;
+                videoStreams.add(new VideoStream(id, url, true, format,
+                        DeliveryMethod.PROGRESSIVE_HTTP, resolution, false, null));
+                videoStreams.add(new VideoStream(id, torrentUrl, true, format,
+                        DeliveryMethod.TORRENT, resolution, false, null));
             }
             return videoStreams;
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new ParsingException("Could not get video streams from array");
         }
 
@@ -375,7 +375,7 @@ public class PeertubeStreamExtractor extends StreamExtractor {
             if (c instanceof JsonObject) {
                 final JsonObject item = (JsonObject) c;
                 final PeertubeStreamInfoItemExtractor extractor = new PeertubeStreamInfoItemExtractor(item, baseUrl);
-                //do not add the same stream in related streams
+                // Do not add the same stream in related streams
                 if (!extractor.getUrl().equals(getUrl())) collector.commit(extractor);
             }
         }
@@ -426,11 +426,11 @@ public class PeertubeStreamExtractor extends StreamExtractor {
                         final String ext = url.substring(url.lastIndexOf(".") + 1);
                         final MediaFormat fmt = MediaFormat.getFromSuffix(ext);
                         if (fmt != null && !isNullOrEmpty(languageCode))
-                            subtitles.add(new SubtitlesStream(fmt, languageCode, url, false));
+                            subtitles.add(new SubtitlesStream(url, fmt, languageCode, false));
                     }
                 }
-            } catch (Exception e) {
-                // ignore all exceptions
+            } catch (final Exception e) {
+                // Ignore all exceptions
             }
         }
     }
